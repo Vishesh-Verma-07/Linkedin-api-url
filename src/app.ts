@@ -55,12 +55,28 @@ export function createApp(client: VoyagerClient): Express {
     }
   });
 
+  app.get("/api/me", async (_req, res) => {
+    try {
+      const profile = await client.getMe();
+      res.json(profile);
+    } catch (err) {
+      if (isSessionFailure(err)) {
+        res.status(401).json({
+          error: "Your LinkedIn session has expired. Refresh LINKEDIN_LI_AT / LINKEDIN_JSESSIONID.",
+        });
+        return;
+      }
+      res.status(500).json({ error: "Failed to fetch the session owner's profile." });
+    }
+  });
+
   app.use((_req, res) => {
     res.status(404).json({
       error: "Not found",
       endpoints: [
         { method: "GET", path: "/health" },
         { method: "GET", path: "/api/profile?url=<linkedin-url-or-identifier>" },
+        { method: "GET", path: "/api/me" },
       ],
     });
   });

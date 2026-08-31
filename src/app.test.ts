@@ -42,6 +42,9 @@ function clientReturning(profile: Profile, onGet?: (identifier: string) => void)
       onGet?.(identifier);
       return profile;
     },
+    async getMe() {
+      return profile;
+    },
   };
 }
 
@@ -49,6 +52,9 @@ function clientThatThrows(error: Error): VoyagerClient {
   return {
     kind: "voyager-client",
     async getProfile() {
+      throw error;
+    },
+    async getMe() {
       throw error;
     },
   };
@@ -109,6 +115,9 @@ describe("GET /api/profile", () => {
           },
         };
         return fetchProfile(transport, identifier);
+      },
+      async getMe() {
+        throw new Error("not used");
       },
     };
 
@@ -210,6 +219,9 @@ describe("GET /api/profile", () => {
         };
         return fetchProfile(transport, identifier);
       },
+      async getMe() {
+        throw new Error("not used");
+      },
     };
 
     const res = await request(createApp(client)).get(
@@ -229,6 +241,41 @@ describe("GET /api/profile", () => {
       ],
       address: "Redmond, Washington",
     });
+  });
+});
+
+describe("GET /api/me", () => {
+  it("returns the session owner's profile in the same flat schema", async () => {
+    const res = await request(createApp(clientReturning(nadellaProfile))).get("/api/me");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(nadellaProfile);
+  });
+
+  it("surfaces a 500 rather than a silent empty body when the session profile is missing", async () => {
+    const client: VoyagerClient = {
+      kind: "voyager-client",
+      async getProfile() {
+        throw new Error("not used");
+      },
+      async getMe() {
+        throw new Error("LinkedIn returned an empty profile for the session owner.");
+      },
+    };
+
+    const res = await request(createApp(client)).get("/api/me");
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/fetch|profile/i);
+  });
+
+  it("returns 401 when the session owner fetch detects a session failure", async () => {
+    const res = await request(
+      createApp(clientThatThrows(new UnexpectedHtmlError("HTML response"))),
+    ).get("/api/me");
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/expired/i);
   });
 });
 
