@@ -6,6 +6,7 @@ import type { Profile } from "./voyager/profile";
 import { fetchProfile } from "./voyager/fetch";
 import { sectionedProfileFixture, aboutGraphqlFixture, contactGraphqlFixture } from "./voyager/fixtures";
 import { ABOUT_QUERY_ID } from "./voyager/graphql";
+import { AuthRedirectError, UnexpectedHtmlError, VoyagerError } from "./voyager/errors";
 
 const nadellaProfile: Profile = {
   id: 123456789,
@@ -40,6 +41,15 @@ function clientReturning(profile: Profile, onGet?: (identifier: string) => void)
     async getProfile(identifier: string) {
       onGet?.(identifier);
       return profile;
+    },
+  };
+}
+
+function clientThatThrows(error: Error): VoyagerClient {
+  return {
+    kind: "voyager-client",
+    async getProfile() {
+      throw error;
     },
   };
 }
@@ -219,5 +229,63 @@ describe("GET /api/profile", () => {
       ],
       address: "Redmond, Washington",
     });
+  });
+});
+
+describe("error contract", () => {
+  it("returns 400 when the url query parameter is missing", async () => {
+    const res = await request(createApp(fakeClient)).get("/api/profile");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/url/);
+  });
+
+  it("returns 400 for an unparseable URL input", async () => {
+    const res = await request(createApp(fakeClient)).get(
+      "/api/profile?url=not-a-url-or-identifier!!!",
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Invalid url/);
+  });
+
+  it("returns 401 when the client throws an AuthRedirectError", async () => {
+    const res = await request(
+      createApp(clientThatThrows(new AuthRedirectError("3xx redirect"))),
+    ).get("/api/profile?url=satyanadella");
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/expired/i);
+  });
+
+  it("returns 401 when the client throws an UnexpectedHtmlError", async () => {
+    const res = await request(
+      createApp(clientThatThrows(new UnexpectedHtmlError("HTML response"))),
+    ).get("/api/profile?url=satyanadella");
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/expired/i);
+  });
+
+  it("returns 500 when the client throws a generic error", async () => {
+    const res = await request(
+      createApp(clientThatThrows(new VoyagerError("network timeout"))),
+    ).get("/api/profile?url=satyanadella");
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/fetch/i);
+  });
+
+  it("returns 404 for an unknown route with the endpoint list", async () => {
+    const res = await request(createApp(fakeClient)).get("/api/nonexistent");
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+    expect(Array.isArray(res.body.endpoints)).toBe(true);
+    expect(res.body.endpoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: "GET", path: expect.stringContaining("/api/profile") }),
+      ]),
+    );
   });
 });

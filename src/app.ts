@@ -55,5 +55,15 @@ export function createApp(client: VoyagerClient): Express {
     }
   });
 
+  app.use((_req, res) => {
+    res.status(404).json({
+      error: "Not found",
+      endpoints: [
+        { method: "GET", path: "/health" },
+        { method: "GET", path: "/api/profile?url=<linkedin-url-or-identifier>" },
+      ],
+    });
+  });
+
   return app;
 }
