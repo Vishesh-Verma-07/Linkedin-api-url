@@ -3,6 +3,8 @@ import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import type { VoyagerClient } from "./voyager/client";
+import { parsePublicIdentifier } from "./voyager/parse";
+import { isSessionFailure } from "./voyager/errors";
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -10,10 +12,6 @@ const apiLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
 });
-
-export interface AppDeps {
-  client: VoyagerClient;
-}
 
 export function createApp(client: VoyagerClient): Express {
   const app = express();
@@ -27,6 +25,35 @@ export function createApp(client: VoyagerClient): Express {
   });
 
   app.use("/api", apiLimiter);
+
+  app.get("/api/profile", async (req, res) => {
+    const raw = typeof req.query.url === "string" ? req.query.url : undefined;
+    if (!raw) {
+      res.status(400).json({ error: "Missing required query parameter: url" });
+      return;
+    }
+
+    const identifier = parsePublicIdentifier(raw);
+    if (identifier === null) {
+      res.status(400).json({
+        error: "Invalid url. Provide a LinkedIn profile URL or a public identifier.",
+      });
+      return;
+    }
+
+    try {
+      const profile = await client.getProfile(identifier);
+      res.json(profile);
+    } catch (err) {
+      if (isSessionFailure(err)) {
+        res.status(401).json({
+          error: "Your LinkedIn session has expired. Refresh LINKEDIN_LI_AT / LINKEDIN_JSESSIONID.",
+        });
+        return;
+      }
+      res.status(500).json({ error: "Failed to fetch the profile." });
+    }
+  });
 
   return app;
 }

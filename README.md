@@ -24,7 +24,7 @@ npm test             # run the vitest + supertest suite
 ## Endpoints
 
 - `GET /health` — `{ status: "ok", timestamp }`
-- `GET /api/profile?url=...` — profile subject (in progress)
+- `GET /api/profile?url=...` — profile subject identity fields (takes a `linkedin.com/in/<slug>` URL or a bare public identifier)
 - `GET /api/me` — session owner (in progress)
 
 See `CONTEXT.md` for the domain glossary and `docs/adr/` for architecture decisions.

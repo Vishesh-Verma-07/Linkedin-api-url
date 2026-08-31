@@ -1,11 +1,14 @@
 import { createApp } from "./app";
 import { requireSessionEnv, requirePort } from "./env";
-import type { VoyagerClient } from "./voyager/client";
+import { createVoyagerClient } from "./voyager/client";
+import { createAxiosTransport } from "./voyager/transport";
 
 async function main(): Promise<void> {
-  requireSessionEnv();
+  const session = requireSessionEnv();
 
-  const client: VoyagerClient = { kind: "voyager-client" };
+  const client = createVoyagerClient({
+    transport: createAxiosTransport(session),
+  });
   const app = createApp(client);
   const port = requirePort();
 

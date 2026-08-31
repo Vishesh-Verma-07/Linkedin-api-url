@@ -1,9 +1,36 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "./app";
 import type { VoyagerClient } from "./voyager/client";
+import type { Profile } from "./voyager/profile";
 
-const fakeClient: VoyagerClient = { kind: "voyager-client" };
+const nadellaProfile: Profile = {
+  id: 123456789,
+  publicIdentifier: "satyanadella",
+  firstName: "Satya",
+  lastName: "Nadella",
+  fullName: "Satya Nadella",
+  headline: "Chairman and CEO at Microsoft",
+  about: "Satya Nadella is the Chairman and Chief Executive Officer of Microsoft.",
+  location: "Seattle, Washington",
+  countryCode: "us",
+  avatarUrl: "https://media.licdn.com/dms/image/profile-displayphoto",
+  backgroundUrl: "https://media.licdn.com/dms/image/background",
+  followersCount: 37000000,
+  connectionsCount: 5000,
+};
+
+function clientReturning(profile: Profile, onGet?: (identifier: string) => void): VoyagerClient {
+  return {
+    kind: "voyager-client",
+    async getProfile(identifier: string) {
+      onGet?.(identifier);
+      return profile;
+    },
+  };
+}
+
+const fakeClient = clientReturning(nadellaProfile, () => {});
 
 describe("GET /health", () => {
   it("returns ok status and a timestamp", async () => {
@@ -19,5 +46,29 @@ describe("security middleware", () => {
   it("sets a helmet security header", async () => {
     const res = await request(createApp(fakeClient)).get("/health");
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
+  });
+});
+
+describe("GET /api/profile", () => {
+  it("returns flat readable identity JSON for a linkedin.com/in URL", async () => {
+    const got = vi.fn();
+    const res = await request(
+      createApp(clientReturning(nadellaProfile, got)),
+    ).get("/api/profile?url=https://www.linkedin.com/in/satyanadella");
+
+    expect(res.status).toBe(200);
+    expect(got).toHaveBeenCalledWith("satyanadella");
+    expect(res.body).toEqual(nadellaProfile);
+  });
+
+  it("returns the same shape for a bare public identifier", async () => {
+    const got = vi.fn();
+    const res = await request(
+      createApp(clientReturning(nadellaProfile, got)),
+    ).get("/api/profile?url=satyanadella");
+
+    expect(res.status).toBe(200);
+    expect(got).toHaveBeenCalledWith("satyanadella");
+    expect(res.body).toEqual(nadellaProfile);
   });
 });
