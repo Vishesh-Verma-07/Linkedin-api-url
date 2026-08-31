@@ -1,31 +1,21 @@
 import type { VoyagerTransport, TransportResponse } from "./transport";
 import { mapProfilePayload, type Profile } from "./profile";
-import type { VoyagerPayload } from "./payload";
-import { AuthRedirectError, UnexpectedHtmlError, isSessionFailure } from "./errors";
+import type { VoyagerPayload, VoyagerIncludedEntity } from "./payload";
+import { isSessionFailure } from "./errors";
+import { assertSessionOk } from "./fetch-shared";
+import {
+  fetchAboutFallback,
+  fetchContactFallback,
+  emptyContact,
+  hasContactData,
+  type Contact,
+} from "./graphql";
+import { PROFILE_TYPE } from "./dash";
 
 const FULL_PROFILE_WITH_ENTITIES_93 =
   "com.linkedin.voyager.dash.deco.identity.profile.FullProfileWithEntities-93";
 const FULL_PROFILE_138 = "com.linkedin.voyager.dash.deco.identity.profile.FullProfile-138";
 const DECORATIONS = [FULL_PROFILE_WITH_ENTITIES_93, FULL_PROFILE_138];
-
-function looksLikeHtml(data: unknown): boolean {
-  if (typeof data !== "string") return false;
-  const head = data.trimStart().slice(0, 200).toLowerCase();
-  return head.startsWith("<!doctype html") || head.startsWith("<html");
-}
-
-function assertSessionOk(res: TransportResponse): void {
-  if (res.status >= 300 && res.status < 400) {
-    throw new AuthRedirectError(
-      `LinkedIn responded with a redirect (HTTP ${res.status}); the session cookie is no longer accepted.`,
-    );
-  }
-  if (looksLikeHtml(res.data)) {
-    throw new UnexpectedHtmlError(
-      "LinkedIn returned an HTML page instead of a JSON payload; the session has expired.",
-    );
-  }
-}
 
 async function fetchDecorated(
   transport: VoyagerTransport,
@@ -36,7 +26,7 @@ async function fetchDecorated(
     `/voyager/api/identity/dash/profiles` +
     `?q=memberIdentity&memberIdentity=${encodeURIComponent(identifier)}` +
     `&decorationId=${encodeURIComponent(decoration)}`;
-  const res = await transport.request({ url });
+  const res: TransportResponse = await transport.request({ url });
 
   assertSessionOk(res);
 
@@ -58,15 +48,28 @@ function isDecoratedPayload(value: unknown): value is VoyagerPayload {
   );
 }
 
+async function bestEffort<T>(run: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (isSessionFailure(err)) throw err;
+    return fallback;
+  }
+}
+
 export async function fetchProfile(
   transport: VoyagerTransport,
   identifier: string,
 ): Promise<Profile> {
   let lastError: unknown;
+  let payload: VoyagerPayload | null = null;
+  let profile: Profile | null = null;
+
   for (const decoration of DECORATIONS) {
     try {
-      const payload = await fetchDecorated(transport, identifier, decoration);
-      return mapProfilePayload(payload);
+      payload = await fetchDecorated(transport, identifier, decoration);
+      profile = mapProfilePayload(payload);
+      break;
     } catch (err) {
       if (isSessionFailure(err)) {
         throw err;
@@ -74,7 +77,32 @@ export async function fetchProfile(
       lastError = err;
     }
   }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error(`Failed to fetch profile for ${identifier}.`);
+
+  if (!payload || !profile) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`Failed to fetch profile for ${identifier}.`);
+  }
+
+  const subject = payload.included?.find(
+    (e): e is VoyagerIncludedEntity => e.$type === PROFILE_TYPE,
+  );
+  const profileUrn = subject?.entityUrn ?? null;
+
+  if (profileUrn !== null && profile.about === null) {
+    profile.about = await bestEffort<string | null>(
+      () => fetchAboutFallback(transport, profileUrn),
+      null,
+    );
+  }
+
+  if (profileUrn !== null && !hasContactData(profile.contact)) {
+    const contact: Contact = await bestEffort<Contact>(
+      () => fetchContactFallback(transport, profileUrn),
+      emptyContact(),
+    );
+    profile.contact = contact;
+  }
+
+  return profile;
 }

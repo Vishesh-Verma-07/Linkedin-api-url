@@ -4,7 +4,8 @@ import { createApp } from "./app";
 import type { VoyagerClient } from "./voyager/client";
 import type { Profile } from "./voyager/profile";
 import { fetchProfile } from "./voyager/fetch";
-import { sectionedProfileFixture } from "./voyager/fixtures";
+import { sectionedProfileFixture, aboutGraphqlFixture, contactGraphqlFixture } from "./voyager/fixtures";
+import { ABOUT_QUERY_ID } from "./voyager/graphql";
 
 const nadellaProfile: Profile = {
   id: 123456789,
@@ -25,6 +26,12 @@ const nadellaProfile: Profile = {
   skills: [],
   certifications: [],
   languages: [],
+  contact: {
+    emailAddress: "satya@example.com",
+    phoneNumbers: ["+1 555-0100"],
+    websites: [{ label: "Company", url: "https://news.microsoft.com/exec/satya" }],
+    address: "Redmond, Washington",
+  },
 };
 
 function clientReturning(profile: Profile, onGet?: (identifier: string) => void): VoyagerClient {
@@ -154,6 +161,63 @@ describe("GET /api/profile", () => {
         { name: "English", proficiency: "NATIVE_OR_BILINGUAL" },
         { name: "Spanish", proficiency: "FULL_PROFESSIONAL" },
       ],
+    });
+  });
+
+  it("fills in about and contact via GraphQL fallbacks at the HTTP seam", async () => {
+    const client: VoyagerClient = {
+      kind: "voyager-client",
+      async getProfile(identifier) {
+        const transport = {
+          async request({ url }: { url: string }) {
+            if (url.includes("/voyager/api/graphql")) {
+              if (url.includes(ABOUT_QUERY_ID)) {
+                return { status: 200, data: aboutGraphqlFixture() };
+              }
+              return { status: 200, data: contactGraphqlFixture() };
+            }
+            if (!url.includes("decorationId=com.linkedin.voyager.dash.deco.identity.profile.FullProfileWithEntities-93")) {
+              return { status: 404, data: {} };
+            }
+            return {
+              status: 200,
+              data: {
+                included: [
+                  {
+                    $type: "com.linkedin.voyager.dash.identity.profile.Profile",
+                    entityUrn: "urn:li:fsd_profile:ACoAAABjFuMBHhkeqe_cSk1_5fNcRa3Q1TZ8j0k",
+                    publicIdentifier: "satyanadella",
+                    firstName: "Satya",
+                    lastName: "Nadella",
+                    headline: "Chairman and CEO at Microsoft",
+                    locationName: "Seattle, Washington",
+                    geoLocation: { country: "us" },
+                  },
+                ],
+              },
+            };
+          },
+        };
+        return fetchProfile(transport, identifier);
+      },
+    };
+
+    const res = await request(createApp(client)).get(
+      "/api/profile?url=https://www.linkedin.com/in/satyanadella",
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.about).toBe(
+      "Satya Nadella is the Chairman and Chief Executive Officer of Microsoft.",
+    );
+    expect(res.body.contact).toEqual({
+      emailAddress: "satya@example.com",
+      phoneNumbers: ["+1 555-0100"],
+      websites: [
+        { label: "Company", url: "https://news.microsoft.com/exec/satya" },
+        { label: "Personal", url: "https://satya.dev" },
+      ],
+      address: "Redmond, Washington",
     });
   });
 });

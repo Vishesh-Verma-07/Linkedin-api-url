@@ -27,6 +27,10 @@ export interface VoyagerIncludedEntity {
   backgroundImage?: VoyagerImage;
   connectionsCount?: number | string;
   followersCount?: number | string;
+  emailAddress?: unknown;
+  phoneNumbers?: unknown[];
+  websites?: unknown[];
+  address?: unknown;
   [key: string]: unknown;
 }
 

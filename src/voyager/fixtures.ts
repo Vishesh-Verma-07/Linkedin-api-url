@@ -135,3 +135,61 @@ export function sectionedProfileFixture(): VoyagerPayload {
     ],
   };
 }
+
+/**
+ * Fallback-shaped ProfileComponents GraphQL payload carrying the About text,
+ * used when the decorated profile payload omits the `about` field.
+ */
+export function aboutGraphqlFixture(): Record<string, unknown> {
+  return {
+    data: {
+      profileComponents: {
+        components: [
+          {
+            components: [
+              {
+                entity: {
+                  $type: "com.linkedin.voyager.dash.identity.profile.AboutComponent",
+                  about: {
+                    text: "Satya Nadella is the Chairman and Chief Executive Officer of Microsoft.",
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * Fallback-shaped ProfileContactInfos GraphQL payload mapping to readable
+ * contact fields: emailAddress, phoneNumbers, websites (label + url), address.
+ */
+export function contactGraphqlFixture(): Record<string, unknown> {
+  return {
+    data: {
+      profileContactInfos: {
+        elements: [
+          { type: "EMAIL", emailAddress: { value: "satya@example.com" } },
+          { type: "PHONE", phoneNumber: { value: "+1 555-0100" }, label: "Mobile" },
+          {
+            type: "WEB",
+            label: "Company",
+            url: {
+              rootUrl: "https://news.microsoft.com/",
+              pathAggregations: [{ value: "exec/satya" }],
+            },
+          },
+          {
+            type: "WEB",
+            label: "Personal",
+            url: { rootUrl: "https://", pathAggregations: [{ value: "satya.dev" }] },
+          },
+          { type: "LOCATION", address: { value: "Redmond, Washington" } },
+        ],
+      },
+    },
+  };
+}
