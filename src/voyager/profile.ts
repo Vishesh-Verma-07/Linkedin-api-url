@@ -1,6 +1,13 @@
 import type { VoyagerPayload, VoyagerIncludedEntity } from "./payload";
+import { mapSections, type ProfileSections } from "./sections";
+import {
+  PROFILE_TYPE,
+  CONNECTION_COUNT_TYPE,
+  FOLLOW_INFO_TYPE,
+  numeric,
+} from "./dash";
 
-export interface Profile {
+export interface Profile extends ProfileSections {
   id: number;
   publicIdentifier: string;
   firstName: string;
@@ -16,25 +23,11 @@ export interface Profile {
   connectionsCount: number | null;
 }
 
-const PROFILE_TYPE = "com.linkedin.voyager.dash.identity.profile.Profile";
-const CONNECTION_COUNT_TYPE =
-  "com.linkedin.voyager.dash.identity.profile.DashMemberConnectionCount";
-const FOLLOW_INFO_TYPE = "com.linkedin.voyager.dash.identity.profile.FollowInfo";
-
 function idFromUrn(urn: string | undefined): number | null {
   if (!urn) return null;
   const last = urn.split(":").pop();
   if (!last || !/^\d+$/.test(last)) return null;
   return Number(last);
-}
-
-function numeric(entity: unknown): number | null {
-  if (typeof entity === "number") return entity;
-  if (typeof entity === "string") {
-    const n = Number(entity);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
 }
 
 function imageUrl(image: unknown): string | null {
@@ -65,6 +58,7 @@ export function mapProfilePayload(payload: VoyagerPayload): Profile {
   const lastName = profile?.lastName ?? "";
 
   return {
+    ...mapSections(payload),
     id,
     publicIdentifier: profile?.publicIdentifier ?? "",
     firstName,

@@ -27,6 +27,7 @@ export interface VoyagerIncludedEntity {
   backgroundImage?: VoyagerImage;
   connectionsCount?: number | string;
   followersCount?: number | string;
+  [key: string]: unknown;
 }
 
 export interface VoyagerPayload {
